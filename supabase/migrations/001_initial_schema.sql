@@ -174,19 +174,35 @@ ALTER TABLE candidates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE candidate_invites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE round_results ENABLE ROW LEVEL SECURITY;
 
+-- Security-definer function to get current user's org_id without
+-- triggering RLS on profiles (prevents infinite recursion).
+CREATE OR REPLACE FUNCTION get_my_org_id()
+RETURNS UUID
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT organization_id FROM profiles WHERE id = auth.uid();
+$$;
+
 -- Organizations: users can only access their own org
 CREATE POLICY "Users can view own organization"
   ON organizations FOR SELECT
-  USING (id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()));
+  USING (id = get_my_org_id());
 
 CREATE POLICY "Admins can update own organization"
   ON organizations FOR UPDATE
-  USING (id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()));
+  USING (id = get_my_org_id());
 
--- Profiles: users can read org profiles, update own
+-- Profiles: users can read own profile + org members; update/insert own only
+CREATE POLICY "Users can view own profile"
+  ON profiles FOR SELECT
+  USING (id = auth.uid());
+
 CREATE POLICY "Users can view org profiles"
   ON profiles FOR SELECT
-  USING (organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()));
+  USING (organization_id = get_my_org_id());
 
 CREATE POLICY "Users can update own profile"
   ON profiles FOR UPDATE
@@ -199,51 +215,51 @@ CREATE POLICY "Users can insert own profile"
 -- Jobs: HR can CRUD jobs in their org
 CREATE POLICY "HR can view org jobs"
   ON jobs FOR SELECT
-  USING (organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()));
+  USING (organization_id = get_my_org_id());
 
 CREATE POLICY "HR can create org jobs"
   ON jobs FOR INSERT
-  WITH CHECK (organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()));
+  WITH CHECK (organization_id = get_my_org_id());
 
 CREATE POLICY "HR can update org jobs"
   ON jobs FOR UPDATE
-  USING (organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()));
+  USING (organization_id = get_my_org_id());
 
 CREATE POLICY "HR can delete org jobs"
   ON jobs FOR DELETE
-  USING (organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()));
+  USING (organization_id = get_my_org_id());
 
 -- Candidates: HR can CRUD candidates in their org
 CREATE POLICY "HR can view org candidates"
   ON candidates FOR SELECT
-  USING (organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()));
+  USING (organization_id = get_my_org_id());
 
 CREATE POLICY "HR can create org candidates"
   ON candidates FOR INSERT
-  WITH CHECK (organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()));
+  WITH CHECK (organization_id = get_my_org_id());
 
 CREATE POLICY "HR can update org candidates"
   ON candidates FOR UPDATE
-  USING (organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()));
+  USING (organization_id = get_my_org_id());
 
 CREATE POLICY "HR can delete org candidates"
   ON candidates FOR DELETE
-  USING (organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid()));
+  USING (organization_id = get_my_org_id());
 
 -- Candidate Invites: HR can create/read in their org
 CREATE POLICY "HR can view org invites"
   ON candidate_invites FOR SELECT
-  USING (job_id IN (SELECT id FROM jobs WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())));
+  USING (job_id IN (SELECT id FROM jobs WHERE organization_id = get_my_org_id()));
 
 CREATE POLICY "HR can create org invites"
   ON candidate_invites FOR INSERT
-  WITH CHECK (job_id IN (SELECT id FROM jobs WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())));
+  WITH CHECK (job_id IN (SELECT id FROM jobs WHERE organization_id = get_my_org_id()));
 
 CREATE POLICY "HR can update org invites"
   ON candidate_invites FOR UPDATE
-  USING (job_id IN (SELECT id FROM jobs WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())));
+  USING (job_id IN (SELECT id FROM jobs WHERE organization_id = get_my_org_id()));
 
 -- Round Results: HR can read all in their org; AI writes via service role
 CREATE POLICY "HR can view org round results"
   ON round_results FOR SELECT
-  USING (job_id IN (SELECT id FROM jobs WHERE organization_id IN (SELECT organization_id FROM profiles WHERE id = auth.uid())));
+  USING (job_id IN (SELECT id FROM jobs WHERE organization_id = get_my_org_id()));

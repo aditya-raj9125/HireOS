@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/service'
 import { JobsListView } from '@/components/dashboard/JobsListView'
 import type { JobWithStats } from '@/types'
 
@@ -8,7 +9,8 @@ export default async function JobsPage() {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const { data: profile } = await supabase
+  const service = createServiceRoleClient()
+  const { data: profile } = await service
     .from('profiles')
     .select('organization_id')
     .eq('id', user?.id ?? '')

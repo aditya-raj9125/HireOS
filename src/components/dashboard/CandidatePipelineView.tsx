@@ -15,6 +15,7 @@ import {
 import type { CandidateStatus, CandidateWithRounds, PipelineRound } from '@/types'
 import { cn, formatScore } from '@/lib/utils'
 import Link from 'next/link'
+import { AddCandidateModal } from './AddCandidateModal'
 
 type View = 'kanban' | 'table'
 
@@ -67,12 +68,10 @@ export function CandidatePipelineView({ jobId, candidates, rounds }: Props) {
         </div>
 
         <div className="flex items-center gap-2">
-          <Link href={`/dashboard/jobs/${jobId}/add-candidate`}>
-            <Button variant="primary" size="sm">
-              <UserPlus className="h-4 w-4" />
-              Add Candidate
-            </Button>
-          </Link>
+          <AddCandidateModal
+            jobId={jobId}
+            onSuccess={() => window.location.reload()}
+          />
 
           <div className="flex rounded-lg border border-neutral-200 p-0.5">
             <button

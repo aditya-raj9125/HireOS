@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/service'
 import { StatsCard } from '@/components/dashboard/StatsCard'
 import { RecentJobsTable } from '@/components/dashboard/RecentJobsTable'
 import { RecentCandidatesTable } from '@/components/dashboard/RecentCandidatesTable'
@@ -21,8 +22,9 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Fetch profile to get org id
-  const { data: profile } = await supabase
+  // Use service role to avoid RLS recursion on profiles
+  const service = createServiceRoleClient()
+  const { data: profile } = await service
     .from('profiles')
     .select('organization_id, full_name')
     .eq('id', user?.id ?? '')

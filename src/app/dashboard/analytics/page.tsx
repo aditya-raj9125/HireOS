@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/service'
 import { FunnelChart } from '@/components/dashboard/FunnelChart'
 import { ScoreDistribution } from '@/components/dashboard/ScoreDistribution'
 import { SourcePieChart } from '@/components/dashboard/SourcePieChart'
@@ -16,7 +17,8 @@ export default async function AnalyticsPage() {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
+  const service = createServiceRoleClient()
+  const { data: profile } = await service
     .from('profiles')
     .select('organization_id')
     .eq('id', user.id)

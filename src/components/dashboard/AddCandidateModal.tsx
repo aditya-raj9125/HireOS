@@ -135,8 +135,9 @@ export function AddCandidateModal({ jobId, onSuccess }: Props) {
 
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-6 shadow-xl">
-          <div className="mb-5 flex items-center justify-between">
+        <Dialog.Content className="fixed top-1/2 left-1/2 z-50 flex w-full max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl bg-white shadow-xl" style={{ maxHeight: 'calc(100vh - 48px)' }}>
+          {/* Fixed header */}
+          <div className="flex items-center justify-between border-b border-neutral-100 px-6 py-4">
             <Dialog.Title className="text-lg font-semibold text-neutral-900">
               Add Candidate
             </Dialog.Title>
@@ -146,6 +147,9 @@ export function AddCandidateModal({ jobId, onSuccess }: Props) {
               </button>
             </Dialog.Close>
           </div>
+
+          {/* Scrollable body */}
+          <div className="overflow-y-auto px-6 py-5">
 
           {/* Mode toggle */}
           <div className="mb-5 flex rounded-lg border border-neutral-200 p-0.5">
@@ -316,6 +320,7 @@ export function AddCandidateModal({ jobId, onSuccess }: Props) {
               </Button>
             </div>
           )}
+          </div>{/* end scrollable body */}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

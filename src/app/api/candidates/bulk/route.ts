@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/service'
 
 export async function POST(req: NextRequest) {
   const supabase = await createServerSupabaseClient()
@@ -10,7 +11,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { data: profile } = await supabase
+  const service = createServiceRoleClient()
+  const { data: profile } = await service
     .from('profiles')
     .select('organization_id')
     .eq('id', user.id)
