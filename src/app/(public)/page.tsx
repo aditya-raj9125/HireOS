@@ -4,29 +4,29 @@ import { SolutionSection } from '@/components/landing/SolutionSection'
 import { FeatureGrid } from '@/components/landing/FeatureGrid'
 import { CompetitiveTable } from '@/components/landing/CompetitiveTable'
 import { CTASection } from '@/components/landing/CTASection'
-import { PublicNavbar } from '@/components/layout/PublicNavbar'
-import { PublicFooter } from '@/components/layout/PublicFooter'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: 'HireOS — Agentic AI Technical Interview Platform',
   description:
     'Eliminate engineer bandwidth drain. HireOS conducts your full technical interview pipeline autonomously.',
+  openGraph: {
+    title: 'HireOS — Agentic AI Technical Interview Platform',
+    description:
+      'Eliminate engineer bandwidth drain. HireOS conducts your full technical interview pipeline autonomously.',
+    type: 'website',
+  },
 }
 
-export default function HomePage() {
+export default function LandingPage() {
   return (
     <>
-      <PublicNavbar />
-      <main>
-        <HeroSection />
-        <ProblemSection />
-        <SolutionSection />
-        <FeatureGrid />
-        <CompetitiveTable />
-        <CTASection />
-      </main>
-      <PublicFooter />
+      <HeroSection />
+      <ProblemSection />
+      <SolutionSection />
+      <FeatureGrid />
+      <CompetitiveTable />
+      <CTASection />
     </>
   )
 }
