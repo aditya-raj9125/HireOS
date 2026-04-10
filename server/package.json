@@ -1,0 +1,33 @@
+{
+  "name": "hireos-interview-server",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch server/index.ts",
+    "build": "tsc -p tsconfig.server.json",
+    "start": "node dist/server/index.js"
+  },
+  "dependencies": {
+    "fastify": "^4.28.0",
+    "@fastify/websocket": "^10.0.0",
+    "ioredis": "^5.4.0",
+    "@deepgram/sdk": "^3.6.0",
+    "@anthropic-ai/sdk": "^0.30.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "dotenv": "^16.4.0",
+    "tree-sitter": "^0.21.0",
+    "tree-sitter-python": "^0.21.0",
+    "tree-sitter-javascript": "^0.21.0",
+    "tree-sitter-typescript": "^0.21.0",
+    "tree-sitter-java": "^0.21.0",
+    "tree-sitter-cpp": "^0.21.0",
+    "tree-sitter-go": "^0.21.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0",
+    "@types/node": "^20.14.0",
+    "@types/ws": "^8.5.0",
+    "vitest": "^2.0.0"
+  }
+}

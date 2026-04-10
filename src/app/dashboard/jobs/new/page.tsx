@@ -14,30 +14,16 @@ import {
   ChevronRight,
   Plus,
   X,
-  GripVertical,
-  Settings,
 } from 'lucide-react'
 import { SENIORITY_LEVELS, JOB_TYPES, DEPARTMENTS } from '@/lib/constants'
-import { ROUND_TYPE_LABELS } from '@/lib/constants'
 import type {
   CreateJobForm,
-  PipelineRound,
-  RoundType,
-  ScoringRubric,
-  AutoAdvanceRules,
+  PipelineRoundV2,
 } from '@/types'
 import { cn } from '@/lib/utils'
+import PipelineBuilder from '@/components/dashboard/PipelineBuilder'
 
 const steps = ['Job Details', 'Pipeline Setup', 'Scoring Rubric']
-
-const availableRounds: { type: RoundType; name: string }[] = [
-  { type: 'online_assessment', name: 'Online Assessment' },
-  { type: 'telephonic_screen', name: 'Telephonic Screen' },
-  { type: 'live_coding', name: 'Live Coding' },
-  { type: 'system_design', name: 'System Design' },
-  { type: 'behavioral', name: 'Behavioral' },
-  { type: 'technical_deep_dive', name: 'Technical Deep Dive' },
-]
 
 export default function CreateJobPage() {
   const router = useRouter()
@@ -59,7 +45,9 @@ export default function CreateJobPage() {
   const [niceSkillInput, setNiceSkillInput] = useState('')
 
   // Step 2 state
-  const [selectedRounds, setSelectedRounds] = useState<PipelineRound[]>([])
+  const [selectedRounds, setSelectedRounds] = useState<PipelineRoundV2[]>([])
+  const [bufferDays, setBufferDays] = useState(2)
+  const [pipelineExpires, setPipelineExpires] = useState('')
 
   // Step 3 state
   const [skillWeights, setSkillWeights] = useState<
@@ -79,25 +67,6 @@ export default function CreateJobPage() {
       setSkills([...skills, trimmed])
     }
     setInput('')
-  }
-
-  function addRound(type: RoundType, name: string) {
-    setSelectedRounds((prev) => [
-      ...prev,
-      {
-        id: nanoid(),
-        type,
-        name,
-        order: prev.length + 1,
-        config: {},
-      },
-    ])
-  }
-
-  function removeRound(id: string) {
-    setSelectedRounds((prev) =>
-      prev.filter((r) => r.id !== id).map((r, i) => ({ ...r, order: i + 1 }))
-    )
   }
 
   function initializeSkillWeights() {
@@ -148,11 +117,21 @@ export default function CreateJobPage() {
       },
     }
 
+    // Also send pipeline_v2 for Part 2
+    const body = {
+      ...form,
+      pipeline_v2: {
+        rounds: selectedRounds,
+        bufferDaysBetweenRounds: bufferDays,
+        expiresAt: pipelineExpires || null,
+      },
+    }
+
     try {
       const res = await fetch('/api/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(body),
       })
 
       const result = await res.json()
@@ -425,79 +404,16 @@ export default function CreateJobPage() {
 
         {/* Step 2: Pipeline Setup */}
         {step === 1 && (
-          <div className="space-y-5">
-            <h2 className="text-lg font-medium text-neutral-900">
-              Pipeline Setup
-            </h2>
-            <p className="text-sm text-neutral-500">
-              Select and order the interview rounds for this role.
-            </p>
-
-            <div className="grid gap-6 lg:grid-cols-2">
-              {/* Available rounds */}
-              <div>
-                <h3 className="mb-3 text-sm font-medium text-neutral-700">
-                  Available Rounds
-                </h3>
-                <div className="space-y-2">
-                  {availableRounds.map((round) => (
-                    <button
-                      key={round.type}
-                      type="button"
-                      onClick={() => addRound(round.type, round.name)}
-                      className="flex w-full items-center justify-between rounded-lg border border-dashed border-neutral-300 px-4 py-3 text-sm text-neutral-700 transition-colors hover:border-brand-400 hover:bg-brand-50"
-                    >
-                      {round.name}
-                      <Plus className="h-4 w-4 text-neutral-400" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Selected rounds */}
-              <div>
-                <h3 className="mb-3 text-sm font-medium text-neutral-700">
-                  Selected Pipeline ({selectedRounds.length} rounds)
-                </h3>
-                {selectedRounds.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-neutral-300 p-8 text-center text-sm text-neutral-400">
-                    Click rounds to add them
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {selectedRounds.map((round) => (
-                      <div
-                        key={round.id}
-                        className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2.5"
-                      >
-                        <GripVertical className="h-4 w-4 text-neutral-300" />
-                        <span className="flex h-6 w-6 items-center justify-center rounded bg-brand-100 text-xs font-bold text-brand-700">
-                          {round.order}
-                        </span>
-                        <span className="flex-1 text-sm font-medium text-neutral-700">
-                          {round.name}
-                        </span>
-                        <button
-                          type="button"
-                          className="text-neutral-400 hover:text-neutral-600"
-                          title="Configure"
-                        >
-                          <Settings className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeRound(round.id)}
-                          className="text-neutral-400 hover:text-red-500"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <PipelineBuilder
+            rounds={selectedRounds}
+            onChange={setSelectedRounds}
+            requiredSkills={requiredSkills}
+            seniority={seniorityLevel}
+            bufferDays={bufferDays}
+            onBufferDaysChange={setBufferDays}
+            expiresAt={pipelineExpires}
+            onExpiresAtChange={setPipelineExpires}
+          />
         )}
 
         {/* Step 3: Scoring Rubric */}
