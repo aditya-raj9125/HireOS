@@ -1,7 +1,7 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Mic, CheckCircle2, AlertTriangle, Volume2 } from 'lucide-react'
+import { Mic, CheckCircle2, AlertTriangle, XCircle, Volume2, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { CheckResult, CheckStatus } from './index'
 
@@ -10,101 +10,125 @@ interface MicCheckProps {
   onNext: () => void
 }
 
+type Phase = 'requesting' | 'active' | 'denied' | 'error'
+
 export default function MicCheck({ onCheckComplete, onNext }: MicCheckProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const animRef = useRef<number>(0)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+
+  const [phase, setPhase] = useState<Phase>('requesting')
+  const [errorMsg, setErrorMsg] = useState('')
   const [noiseStatus, setNoiseStatus] = useState<CheckStatus>('checking')
   const [speechStatus, setSpeechStatus] = useState<CheckStatus>('pending')
   const [speakerConfirmed, setSpeakerConfirmed] = useState<boolean | null>(null)
   const [listening, setListening] = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-    let audioCtx: AudioContext | null = null
+  const requestMic = useCallback(async () => {
+    // Clean up prior resources
+    cancelAnimationFrame(animRef.current)
+    audioCtxRef.current?.close()
+    audioCtxRef.current = null
+    analyserRef.current = null
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop())
+      streamRef.current = null
+    }
 
-    async function startMic() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true },
-        })
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop())
-          return
-        }
+    setPhase('requesting')
+    setErrorMsg('')
+    setNoiseStatus('checking')
+    setSpeechStatus('pending')
+    setSpeakerConfirmed(null)
 
-        audioCtx = new AudioContext()
-        const source = audioCtx.createMediaStreamSource(stream)
-        const analyser = audioCtx.createAnalyser()
-        analyser.fftSize = 256
-        source.connect(analyser)
-        analyserRef.current = analyser
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
+      })
+      streamRef.current = stream
 
-        // Noise floor measurement for 2 seconds
-        const dataArray = new Uint8Array(analyser.frequencyBinCount)
-        let noiseFrames = 0
-        let noiseSum = 0
+      const audioCtx = new AudioContext()
+      audioCtxRef.current = audioCtx
+      const source = audioCtx.createMediaStreamSource(stream)
+      const analyser = audioCtx.createAnalyser()
+      analyser.fftSize = 256
+      source.connect(analyser)
+      analyserRef.current = analyser
 
-        const measureNoise = () => {
-          analyser.getByteFrequencyData(dataArray)
-          const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
-          noiseSum += avg
-          noiseFrames++
+      setPhase('active')
 
-          if (noiseFrames < 60) {
-            // ~2 sec at 30fps
-            requestAnimationFrame(measureNoise)
-          } else {
-            const avgNoise = noiseSum / noiseFrames
-            // Approximate: avg byte > 40 ≈ -30dBFS threshold
-            const status: CheckStatus = avgNoise > 40 ? 'warn' : 'pass'
-            if (!cancelled) setNoiseStatus(status)
-          }
-        }
-        measureNoise()
+      // Measure noise floor
+      const dataArray = new Uint8Array(analyser.frequencyBinCount)
+      let noiseFrames = 0
+      let noiseSum = 0
 
-        // Waveform visualization
-        const drawWaveform = () => {
-          if (cancelled || !canvasRef.current) return
-          const ctx = canvasRef.current.getContext('2d')
-          if (!ctx) return
-          const w = canvasRef.current.width
-          const h = canvasRef.current.height
-
-          analyser.getByteFrequencyData(dataArray)
-          ctx.clearRect(0, 0, w, h)
-
-          const barW = 4
-          const gap = 2
-          const bars = Math.floor(w / (barW + gap))
-
-          for (let i = 0; i < bars; i++) {
-            const idx = Math.floor((i / bars) * dataArray.length)
-            const barH = (dataArray[idx] / 255) * h
-            ctx.fillStyle = '#0F9B77'
-            ctx.fillRect(i * (barW + gap), h - barH, barW, barH)
-          }
-
-          animRef.current = requestAnimationFrame(drawWaveform)
-        }
-        drawWaveform()
-      } catch {
-        if (!cancelled) {
-          setNoiseStatus('fail')
-          onCheckComplete({ status: 'fail', detail: 'Microphone permission denied' })
+      const measureNoise = () => {
+        analyser.getByteFrequencyData(dataArray)
+        const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
+        noiseSum += avg
+        noiseFrames++
+        if (noiseFrames < 60) {
+          requestAnimationFrame(measureNoise)
+        } else {
+          const avgNoise = noiseSum / noiseFrames
+          setNoiseStatus(avgNoise > 40 ? 'warn' : 'pass')
         }
       }
-    }
+      measureNoise()
 
-    startMic()
+      // Draw waveform
+      const drawWaveform = () => {
+        if (!canvasRef.current) return
+        const ctx = canvasRef.current.getContext('2d')
+        if (!ctx) return
+        const w = canvasRef.current.width
+        const h = canvasRef.current.height
+        analyser.getByteFrequencyData(dataArray)
+        ctx.clearRect(0, 0, w, h)
+        const barW = 4
+        const gap = 2
+        const bars = Math.floor(w / (barW + gap))
+        for (let i = 0; i < bars; i++) {
+          const idx = Math.floor((i / bars) * dataArray.length)
+          const barH = (dataArray[idx] / 255) * h
+          ctx.fillStyle = '#0F9B77'
+          ctx.fillRect(i * (barW + gap), h - barH, barW, barH)
+        }
+        animRef.current = requestAnimationFrame(drawWaveform)
+      }
+      drawWaveform()
+    } catch (err: unknown) {
+      const name = err instanceof Error ? err.name : ''
+      const message = err instanceof Error ? err.message : String(err)
 
-    return () => {
-      cancelled = true
-      cancelAnimationFrame(animRef.current)
-      audioCtx?.close()
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        setPhase('denied')
+      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        setPhase('error')
+        setErrorMsg('No microphone found. Please connect a microphone and try again.')
+      } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+        setPhase('error')
+        setErrorMsg('Microphone is in use by another app. Close other apps and try again.')
+      } else {
+        setPhase('error')
+        setErrorMsg(message || 'Unknown microphone error')
+      }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    requestMic()
+    return () => {
+      cancelAnimationFrame(animRef.current)
+      audioCtxRef.current?.close()
+      audioCtxRef.current = null
+      streamRef.current?.getTracks().forEach((t) => t.stop())
+      streamRef.current = null
+    }
+  }, [requestMic])
 
   const startSpeechTest = useCallback(() => {
     setListening(true)
@@ -154,7 +178,7 @@ export default function MicCheck({ onCheckComplete, onNext }: MicCheckProps) {
     }, 1000)
   }, [])
 
-  // Compute overall
+  // Compute overall when all sub-checks done
   useEffect(() => {
     if (
       noiseStatus !== 'checking' &&
@@ -168,11 +192,97 @@ export default function MicCheck({ onCheckComplete, onNext }: MicCheckProps) {
       const hasWarn = statuses.includes('warn')
       onCheckComplete({
         status: hasFail ? 'fail' : hasWarn ? 'warn' : 'pass',
-        detail: hasFail ? 'Microphone check failed' : hasWarn ? 'Mic check passed with warnings' : 'Mic check passed',
+        detail: hasFail ? 'Mic check failed' : hasWarn ? 'Mic check passed with warnings' : 'Mic check passed',
       })
     }
   }, [noiseStatus, speechStatus, speakerConfirmed, onCheckComplete])
 
+  // Requesting state
+  if (phase === 'requesting') {
+    return (
+      <div className="flex flex-col items-center gap-3 py-8 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-50">
+          <Mic className="h-7 w-7 text-brand-500" />
+        </div>
+        <p className="font-medium text-neutral-900">Requesting microphone access...</p>
+        <p className="text-sm text-neutral-500">
+          If a browser prompt appears, click <strong>Allow</strong>.
+        </p>
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-neutral-300 border-t-brand-500" />
+      </div>
+    )
+  }
+
+  // Denied state
+  if (phase === 'denied') {
+    return (
+      <div className="space-y-4 text-center">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
+          <XCircle className="h-7 w-7 text-red-500" />
+        </div>
+        <h3 className="font-semibold text-neutral-900">Microphone Access Denied</h3>
+        <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 text-left text-sm text-amber-800">
+          <p className="mb-2 font-semibold">To allow microphone access:</p>
+          <ol className="list-decimal space-y-1.5 pl-5">
+            <li>Click the <strong>lock/info icon</strong> in the address bar</li>
+            <li>Set <strong>Microphone</strong> to <strong>Allow</strong></li>
+            <li>Then click <strong>&quot;Try Again&quot;</strong> below</li>
+          </ol>
+        </div>
+        <div className="flex gap-2 justify-center">
+          <button
+            onClick={requestMic}
+            className="flex items-center gap-2 rounded-lg bg-brand-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-600"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Try Again
+          </button>
+          <button
+            onClick={() => {
+              onCheckComplete({ status: 'warn', detail: 'Microphone skipped by candidate' })
+              onNext()
+            }}
+            className="rounded-lg border border-neutral-300 px-4 py-2.5 text-sm font-medium text-neutral-600 hover:bg-neutral-50"
+          >
+            Skip
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (phase === 'error') {
+    return (
+      <div className="space-y-4 text-center">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-100">
+          <AlertTriangle className="h-7 w-7 text-amber-500" />
+        </div>
+        <h3 className="font-semibold text-neutral-900">Microphone Error</h3>
+        <p className="text-sm text-neutral-600">{errorMsg}</p>
+        <div className="flex gap-2 justify-center">
+          <button
+            onClick={requestMic}
+            className="flex items-center gap-2 rounded-lg bg-brand-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-600"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Retry
+          </button>
+          <button
+            onClick={() => {
+              onCheckComplete({ status: 'warn', detail: 'Mic error: ' + errorMsg })
+              onNext()
+            }}
+            className="rounded-lg border border-neutral-300 px-4 py-2.5 text-sm font-medium text-neutral-600 hover:bg-neutral-50"
+          >
+            Skip
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Active state - mic is working
   return (
     <div className="space-y-4">
       {/* Waveform */}
@@ -212,7 +322,7 @@ export default function MicCheck({ onCheckComplete, onNext }: MicCheckProps) {
           <span className="ml-auto text-xs text-green-600">Detected!</span>
         )}
         {speechStatus === 'fail' && (
-          <span className="ml-auto text-xs text-red-600">Not detected — try again</span>
+          <span className="ml-auto text-xs text-red-600">Not detected - try again</span>
         )}
       </div>
 
@@ -264,6 +374,6 @@ export default function MicCheck({ onCheckComplete, onNext }: MicCheckProps) {
 function StatusBadge({ status }: { status: CheckStatus }) {
   if (status === 'pass') return <CheckCircle2 className="h-5 w-5 text-green-500" />
   if (status === 'warn') return <AlertTriangle className="h-5 w-5 text-amber-500" />
-  if (status === 'fail') return <Mic className="h-5 w-5 text-red-500" />
+  if (status === 'fail') return <XCircle className="h-5 w-5 text-red-500" />
   return <div className="h-5 w-5 animate-spin rounded-full border-2 border-neutral-300 border-t-brand-500" />
 }

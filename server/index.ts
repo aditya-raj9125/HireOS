@@ -40,7 +40,21 @@ interface ActiveSession {
 
 // ─── Infrastructure ─────────────────────────────────────────
 
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379')
+// Redis is optional — falls back to in-memory store for local dev
+const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379'
+const redis = new Redis(redisUrl, {
+  lazyConnect: true,
+  enableOfflineQueue: false,
+  retryStrategy: () => null, // disable reconnection so errors stay silent
+})
+
+redis.connect().catch(() => {
+  console.warn('[redis] Not available — session persistence disabled (in-memory only)')
+})
+
+redis.on('error', () => {
+  // suppress ioredis unhandled error spam
+})
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -130,7 +144,8 @@ export async function createInterviewServer() {
 
             if (existingSessionId) {
               // Attempt restoration from Redis
-              const stored = await redis.hgetall(`session:${existingSessionId}`)
+              let stored: Record<string, string> = {}
+              try { stored = await redis.hgetall(`session:${existingSessionId}`) ?? {} } catch { /* no redis */ }
               if (stored && stored.sessionId) {
                 state = {
                   sessionId: stored.sessionId,
@@ -196,25 +211,21 @@ export async function createInterviewServer() {
           switch (msg.type) {
             case 'audio:chunk':
               // Forward to STT service via Redis stream
-              await redis.xadd(
-                `interview:${currentSession.state.sessionId}:events`,
-                '*',
-                'type',
-                'audio:chunk',
-                'data',
-                JSON.stringify(msg.payload),
-              )
+              try {
+                await redis.xadd(
+                  `interview:${currentSession.state.sessionId}:events`,
+                  '*', 'type', 'audio:chunk', 'data', JSON.stringify(msg.payload),
+                )
+              } catch { /* no redis */ }
               break
 
             case 'code:update':
-              await redis.xadd(
-                `interview:${currentSession.state.sessionId}:events`,
-                '*',
-                'type',
-                'code:update',
-                'data',
-                JSON.stringify(msg.payload),
-              )
+              try {
+                await redis.xadd(
+                  `interview:${currentSession.state.sessionId}:events`,
+                  '*', 'type', 'code:update', 'data', JSON.stringify(msg.payload),
+                )
+              } catch { /* no redis */ }
               currentSession.state.codeSnapshots.push({
                 ...msg.payload,
                 timestamp: Date.now(),
@@ -222,25 +233,21 @@ export async function createInterviewServer() {
               break
 
             case 'code:run':
-              await redis.xadd(
-                `interview:${currentSession.state.sessionId}:events`,
-                '*',
-                'type',
-                'code:run',
-                'data',
-                JSON.stringify(msg.payload),
-              )
+              try {
+                await redis.xadd(
+                  `interview:${currentSession.state.sessionId}:events`,
+                  '*', 'type', 'code:run', 'data', JSON.stringify(msg.payload),
+                )
+              } catch { /* no redis */ }
               break
 
             case 'whiteboard:update':
-              await redis.xadd(
-                `interview:${currentSession.state.sessionId}:events`,
-                '*',
-                'type',
-                'whiteboard:update',
-                'data',
-                JSON.stringify(msg.payload),
-              )
+              try {
+                await redis.xadd(
+                  `interview:${currentSession.state.sessionId}:events`,
+                  '*', 'type', 'whiteboard:update', 'data', JSON.stringify(msg.payload),
+                )
+              } catch { /* no redis */ }
               currentSession.state.whiteboardSnapshots.push({
                 ...msg.payload,
                 timestamp: Date.now(),
@@ -248,14 +255,12 @@ export async function createInterviewServer() {
               break
 
             case 'proctor:event':
-              await redis.xadd(
-                `interview:${currentSession.state.sessionId}:events`,
-                '*',
-                'type',
-                'proctor:event',
-                'data',
-                JSON.stringify(msg.payload),
-              )
+              try {
+                await redis.xadd(
+                  `interview:${currentSession.state.sessionId}:events`,
+                  '*', 'type', 'proctor:event', 'data', JSON.stringify(msg.payload),
+                )
+              } catch { /* no redis */ }
               currentSession.state.proctorEvents.push({
                 ...msg.payload,
                 timestamp: Date.now(),
@@ -267,14 +272,12 @@ export async function createInterviewServer() {
               break
 
             case 'candidate:interrupt':
-              await redis.xadd(
-                `interview:${currentSession.state.sessionId}:events`,
-                '*',
-                'type',
-                'candidate:interrupt',
-                'data',
-                '{}',
-              )
+              try {
+                await redis.xadd(
+                  `interview:${currentSession.state.sessionId}:events`,
+                  '*', 'type', 'candidate:interrupt', 'data', '{}',
+                )
+              } catch { /* no redis */ }
               break
 
             case 'candidate:finished':
@@ -302,7 +305,7 @@ export async function createInterviewServer() {
             'session:expiry',
             Date.now() + 5 * 60 * 1000,
             currentSession.state.sessionId,
-          )
+          ).catch(() => { /* no redis */ })
         }
       })
 
@@ -372,10 +375,14 @@ async function persistSession(state: SessionState) {
     completed: String(state.completed),
   }
 
-  const pipeline = redis.pipeline()
-  pipeline.hmset(key, data)
-  pipeline.expire(key, 4 * 60 * 60) // 4 hours TTL
-  await pipeline.exec()
+  try {
+    const pipeline = redis.pipeline()
+    pipeline.hmset(key, data)
+    pipeline.expire(key, 4 * 60 * 60) // 4 hours TTL
+    await pipeline.exec()
+  } catch {
+    // Redis unavailable — session stored in-memory only
+  }
 }
 
 function startTimer(session: ActiveSession) {
@@ -419,7 +426,7 @@ async function initializeAgents(state: SessionState) {
   try {
     await redis.xgroup('CREATE', streamKey, 'agents', '0', 'MKSTREAM')
   } catch {
-    // Group may already exist on reconnection
+    // Redis unavailable or group already exists
   }
 
   // Agents are initialized lazily and subscribe to the stream

@@ -18,6 +18,7 @@ interface ReadinessConfirmProps {
 export default function ReadinessConfirm({ results, token, onBegin }: ReadinessConfirmProps) {
   const [consent, setConsent] = useState(false)
   const [ackWarnings, setAckWarnings] = useState(false)
+  const [ackFailures, setAckFailures] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
   const entries = [
@@ -31,20 +32,22 @@ export default function ReadinessConfirm({ results, token, onBegin }: ReadinessC
   const hasAnyWarn = entries.some((e) => e.result?.status === 'warn')
   const allPass = entries.every((e) => e.result?.status === 'pass')
 
-  const canProceed = consent && (!hasAnyWarn || ackWarnings) && !hasAnyFail
+  // ackFailures implicitly covers warnings — only require ackWarnings when there are no failures
+  const canProceed = consent && (!hasAnyFail || ackFailures) && (!hasAnyWarn || ackWarnings || ackFailures)
 
   async function handleBegin() {
     setSubmitting(true)
     try {
+      const overallPass = entries.every((e) => e.result?.status === 'pass')
       await fetch(`/api/portal/${token}/system-check-result`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          camera: results.camera,
-          mic: results.mic,
-          network: results.network,
-          browser: results.browser,
-          timestamp: new Date().toISOString(),
+          cameraResult: results.camera ?? {},
+          micResult: results.mic ?? {},
+          networkResult: results.network ?? {},
+          browserResult: results.browser ?? {},
+          overallPass,
         }),
       })
       onBegin()
@@ -71,23 +74,31 @@ export default function ReadinessConfirm({ results, token, onBegin }: ReadinessC
         ))}
       </div>
 
-      {/* Failed checks — resolution cards */}
+      {/* Failed checks — acknowledgment required */}
       {hasAnyFail && (
-        <div className="rounded-lg bg-red-50 border border-red-200 p-4 space-y-2">
-          <p className="text-sm font-semibold text-red-800">Cannot Proceed</p>
-          <p className="text-xs text-red-700">
-            One or more required checks failed. Please resolve the issues and refresh this page to retry.
-          </p>
-          <ul className="text-xs text-red-700 list-disc ml-4 space-y-1">
-            {entries
-              .filter((e) => e.result?.status === 'fail')
-              .map((e) => (
-                <li key={e.label}>
-                  <strong>{e.label}:</strong> {e.result?.detail}
-                </li>
-              ))}
-          </ul>
-        </div>
+        <label className="flex gap-3 items-start rounded-lg bg-red-50 border border-red-200 p-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={ackFailures}
+            onChange={(e) => setAckFailures(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-brand-500 focus:ring-brand-500"
+          />
+          <div>
+            <p className="text-sm font-medium text-red-800">Some checks failed — proceed anyway?</p>
+            <ul className="mt-1 text-xs text-red-700 list-disc ml-4 space-y-0.5">
+              {entries
+                .filter((e) => e.result?.status === 'fail')
+                .map((e) => (
+                  <li key={e.label}>
+                    <strong>{e.label}:</strong> {e.result?.detail}
+                  </li>
+                ))}
+            </ul>
+            <p className="mt-1 text-xs text-red-600">
+              Check the box to acknowledge and continue. Your assessment experience may be affected.
+            </p>
+          </div>
+        </label>
       )}
 
       {/* Warning acknowledgment */}
