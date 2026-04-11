@@ -68,6 +68,11 @@ export default function SystemCheck({ onComplete, token }: SystemCheckProps) {
     []
   )
 
+  const handleCameraComplete = useCallback((r: CheckResult) => handleCheckComplete('camera', r), [handleCheckComplete])
+  const handleMicComplete = useCallback((r: CheckResult) => handleCheckComplete('mic', r), [handleCheckComplete])
+  const handleNetworkComplete = useCallback((r: CheckResult) => handleCheckComplete('network', r), [handleCheckComplete])
+  const handleBrowserComplete = useCallback((r: CheckResult) => handleCheckComplete('browser', r), [handleCheckComplete])
+
   const handleNext = useCallback(() => {
     dispatch({ type: 'NEXT_STEP' })
   }, [])
@@ -108,25 +113,25 @@ export default function SystemCheck({ onComplete, token }: SystemCheckProps) {
       >
         {state.step === 0 && (
           <CameraCheck
-            onCheckComplete={(r) => handleCheckComplete('camera', r)}
+            onCheckComplete={handleCameraComplete}
             onNext={handleNext}
           />
         )}
         {state.step === 1 && (
           <MicCheck
-            onCheckComplete={(r) => handleCheckComplete('mic', r)}
+            onCheckComplete={handleMicComplete}
             onNext={handleNext}
           />
         )}
         {state.step === 2 && (
           <NetworkCheck
-            onCheckComplete={(r) => handleCheckComplete('network', r)}
+            onCheckComplete={handleNetworkComplete}
             onNext={handleNext}
           />
         )}
         {state.step === 3 && (
           <BrowserCheck
-            onCheckComplete={(r) => handleCheckComplete('browser', r)}
+            onCheckComplete={handleBrowserComplete}
             onNext={handleNext}
           />
         )}

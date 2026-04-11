@@ -130,29 +130,37 @@ export default function MicCheck({ onCheckComplete, onNext }: MicCheckProps) {
     }
   }, [requestMic])
 
-  const startSpeechTest = useCallback(() => {
+  const startSpeechTest = useCallback(async () => {
     setListening(true)
     setSpeechStatus('checking')
     const analyser = analyserRef.current
-    if (!analyser) {
+    const audioCtx = audioCtxRef.current
+    if (!analyser || !audioCtx) {
       setSpeechStatus('fail')
+      setListening(false)
       return
     }
 
-    const dataArray = new Uint8Array(analyser.frequencyBinCount)
+    // Resume AudioContext — browsers may suspend it until a user gesture
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume()
+    }
+
+    // Use time-domain data: silence = 128, speech causes deviations above/below
+    const dataArray = new Uint8Array(analyser.fftSize)
     let detected = false
     const start = Date.now()
 
     const check = () => {
       if (detected) return
-      if (Date.now() - start > 5000) {
+      if (Date.now() - start > 7000) {
         setSpeechStatus('fail')
         setListening(false)
         return
       }
-      analyser.getByteFrequencyData(dataArray)
-      const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
-      if (avg > 30) {
+      analyser.getByteTimeDomainData(dataArray)
+      const maxDeviation = dataArray.reduce((max, v) => Math.max(max, Math.abs(v - 128)), 0)
+      if (maxDeviation > 25) {
         detected = true
         setSpeechStatus('pass')
         setListening(false)
