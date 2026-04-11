@@ -95,11 +95,13 @@ export function PortalClient({ token }: { token: string }) {
 
   if (stage === 'interview') {
     return (
-      <InterviewStage
-        token={token}
-        candidate={candidate}
-        rounds={rounds}
-      />
+      <div className="h-screen flex flex-col overflow-hidden">
+        <InterviewStage
+          token={token}
+          candidate={candidate}
+          rounds={rounds}
+        />
+      </div>
     )
   }
 
@@ -312,6 +314,18 @@ function WebSocketRound({
   const roundConfig = roundSession.roundConfig
   const roundType = currentRound.type
 
+  // Provide a default question from round config while awaiting the AI agent
+  const effectiveQuestion = session.currentQuestion ?? {
+    questionText: currentRound.type === 'system_design'
+      ? `Welcome to the System Design round! You have ${roundConfig.durationMinutes ?? 45} minutes. The AI interviewer is connecting — please take a moment to review the whiteboard.`
+      : currentRound.type === 'live_coding' || currentRound.type === 'technical_deep_dive'
+        ? `Welcome to your coding interview! You have ${roundConfig.durationMinutes ?? 60} minutes. The AI interviewer is connecting…`
+        : `Welcome! Your interview is about to begin. The AI interviewer is connecting…`,
+    questionIndex: 0,
+    topic: '',
+    difficulty: roundConfig.questionDifficulty ?? 'adaptive',
+  }
+
   if (session.connectionStatus === 'connecting') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-neutral-50">
@@ -328,7 +342,7 @@ function WebSocketRound({
       <LiveCodingRound
         sessionId={session.sessionId ?? roundSession.sessionId}
         sendMessage={session.sendMessage as Parameters<typeof LiveCodingRound>[0]['sendMessage']}
-        currentQuestion={session.currentQuestion}
+        currentQuestion={effectiveQuestion}
         codeResults={null}
         codeFollowUp={null}
         transcript={session.transcript}
@@ -340,16 +354,18 @@ function WebSocketRound({
 
   if (roundType === 'system_design') {
     return (
-      <SystemDesignRound
-        sessionId={session.sessionId ?? roundSession.sessionId}
-        sendMessage={session.sendMessage as Parameters<typeof SystemDesignRound>[0]['sendMessage']}
-        currentQuestion={session.currentQuestion}
-        transcript={session.transcript}
-        timerState={session.timerState}
-        topicsCovered={session.topicsCovered}
-        mustCoverRemaining={session.mustCoverRemaining}
-        roundConfig={roundConfig}
-      />
+      <div className="flex-1 overflow-hidden">
+        <SystemDesignRound
+          sessionId={session.sessionId ?? roundSession.sessionId}
+          sendMessage={session.sendMessage as Parameters<typeof SystemDesignRound>[0]['sendMessage']}
+          currentQuestion={effectiveQuestion}
+          transcript={session.transcript}
+          timerState={session.timerState}
+          topicsCovered={session.topicsCovered}
+          mustCoverRemaining={session.mustCoverRemaining}
+          roundConfig={roundConfig}
+        />
+      </div>
     )
   }
 
@@ -360,7 +376,7 @@ function WebSocketRound({
       sendMessage={session.sendMessage as Parameters<typeof VoiceRound>[0]['sendMessage']}
       transcript={session.transcript}
       isAISpeaking={session.isAISpeaking}
-      currentQuestion={session.currentQuestion}
+      currentQuestion={effectiveQuestion}
       timerState={session.timerState}
       topicsCovered={session.topicsCovered}
       mustCoverRemaining={session.mustCoverRemaining}

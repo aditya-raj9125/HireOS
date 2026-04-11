@@ -46,9 +46,10 @@ export async function POST(
   // Generate session ID
   const sessionId = `session_${invite.candidate_id}_${invite.job_id}_r${roundNumber}_${Date.now()}`
 
-  // Get round config from pipeline_v2
-  const pipeline = invite.jobs?.pipeline_v2 as { rounds?: Record<string, unknown>[] } | undefined
-  const roundConfig = pipeline?.rounds?.[roundNumber - 1] || {}
+  // Get round config — prefer pipeline_v2, fall back to pipeline_config
+  const pipelineV2 = invite.jobs?.pipeline_v2 as { rounds?: Record<string, unknown>[] } | undefined
+  const pipelineV1 = invite.jobs?.pipeline_config as { rounds?: Record<string, unknown>[] } | undefined
+  const roundConfig = pipelineV2?.rounds?.[roundNumber - 1] ?? pipelineV1?.rounds?.[roundNumber - 1] ?? {}
 
   // Create or update round_results row
   if (existingResult) {

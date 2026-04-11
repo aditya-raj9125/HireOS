@@ -160,20 +160,44 @@ export class ConversationAgent {
     const name = this.config.candidateName || 'there'
     const roundType = this.config.sessionState.roundType
     const duration = this.config.roundConfig.durationMinutes
+    const firstTopic = this.getNextTopic()
 
     const openingPrompt = [
       `Generate a brief, warm opening for a ${roundType} interview.`,
       `The candidate's name is ${name}. The interview will last ${duration} minutes.`,
       `Introduce yourself as the interviewer, explain the round format briefly,`,
       `ask if the candidate is ready, then ask the first question.`,
-      `The first question topic should be: ${this.getNextTopic()}.`,
+      `The first question topic should be: ${firstTopic}.`,
       this.config.getDifficultyInstruction?.() || '',
       `Keep the opening under 4 sentences before the first question.`,
     ].join(' ')
 
     this.conversationHistory.push({ role: 'user', content: '[SYSTEM: Start interview]' })
 
-    await this.generateAndSpeak(openingPrompt)
+    let openingText: string
+    try {
+      openingText = await this.generateAndSpeak(openingPrompt)
+    } catch (err) {
+      console.error('[ConversationAgent] Opening LLM call failed:', (err as Error).message)
+      // Fall back to a static opening so the UI still shows a question
+      openingText = `Welcome${name !== 'there' ? `, ${name}` : ''}! I'm your ${roundType.replace(/_/g, ' ')} interviewer today. We have ${duration} minutes. Let's start — could you walk me through your approach to ${firstTopic}?`
+      // Notify client via text too
+      this.sendToClient({
+        type: 'ai:text',
+        payload: { text: openingText, isFinal: true, questionIndex: 1, topic: firstTopic },
+      })
+    }
+
+    // Populate the Problem Statement / question panel on the client
+    this.sendToClient({
+      type: 'ai:question',
+      payload: {
+        questionText: openingText,
+        questionIndex: 1,
+        topic: firstTopic,
+        difficulty: this.config.roundConfig.questionDifficulty,
+      },
+    })
 
     this.config.sessionState.questionIndex = 1
   }
@@ -390,7 +414,7 @@ export class ConversationAgent {
     await this.generateAndSpeak(instruction)
   }
 
-  private async generateAndSpeak(instruction: string): Promise<void> {
+  private async generateAndSpeak(instruction: string): Promise<string> {
     // Trim conversation history to prevent context overflow
     const trimmedHistory = this.getTrimmedHistory()
 
@@ -440,6 +464,8 @@ export class ConversationAgent {
       'questionIndex',
       String(this.config.sessionState.questionIndex),
     )
+
+    return fullText
   }
 
   private async deliverClosing(): Promise<void> {

@@ -5,6 +5,9 @@ import { createClient } from '@supabase/supabase-js'
 import { config } from 'dotenv'
 import { resolve } from 'path'
 import type { WebSocket } from 'ws'
+import { LLMRouter } from './services/LLMRouter'
+import { TTSService } from './services/TTSService'
+import { ConversationAgent } from './agents/ConversationAgent'
 
 // Load env from project root
 config({ path: resolve(__dirname, '..', '.env.local') })
@@ -36,6 +39,7 @@ interface ActiveSession {
   ws: WebSocket
   state: SessionState
   timerInterval?: ReturnType<typeof setInterval>
+  agent?: ConversationAgent
 }
 
 // ─── Infrastructure ─────────────────────────────────────────
@@ -60,6 +64,14 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
 )
+
+// ─── LLM Router (Cloudflare Workers AI) ─────────────────────
+
+const llmRouter = new LLMRouter({
+  cloudflareAccountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+  cloudflareAIToken: process.env.CLOUDFLARE_AI_TOKEN!,
+  cloudflareAIGatewayUrl: process.env.CLOUDFLARE_AI_GATEWAY_URL || undefined,
+})
 
 const activeSessions = new Map<string, ActiveSession>()
 
@@ -113,12 +125,13 @@ export async function createInterviewServer() {
             // Validate token
             const { token, candidateId, roundNumber, existingSessionId } = msg.payload
             const { data: invite, error } = await supabase
-              .from('invites')
+              .from('candidate_invites')
               .select('*, candidates(*), jobs(*)')
               .eq('token', token)
               .single()
 
             if (error || !invite) {
+              fastify.log.error({ error, token }, 'Token validation failed')
               socket.send(
                 JSON.stringify({
                   type: 'error',
@@ -200,7 +213,7 @@ export async function createInterviewServer() {
             startTimer(currentSession)
 
             // Initialize agent pipeline
-            await initializeAgents(state)
+            await initializeAgents(currentSession, invite.candidates?.full_name, invite.jobs)
 
             return
           }
@@ -300,6 +313,7 @@ export async function createInterviewServer() {
         fastify.log.info(`WebSocket closed for session: ${sessionId}`)
         if (currentSession) {
           clearInterval(currentSession.timerInterval)
+          currentSession.agent?.stop()
           // Don't delete — allow reconnection within 5 minutes
           redis.zadd(
             'session:expiry',
@@ -323,18 +337,22 @@ export async function createInterviewServer() {
 function createNewSession(
   sessionId: string,
   candidateId: string,
-  job: { id: string; pipeline_v2?: { rounds?: { durationMinutes?: number; warningAtMinutes?: number; type?: string; mustCoverTopics?: string[] }[] } },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  job: { id: string; pipeline_v2?: any; pipeline_config?: any },
   roundNumber: number,
 ): SessionState {
-  const roundConfig = job.pipeline_v2?.rounds?.[roundNumber - 1]
-  const duration = (roundConfig?.durationMinutes ?? 30) * 60
+  // Prefer pipeline_v2 rounds, fall back to pipeline_config rounds
+  const v2Round = job.pipeline_v2?.rounds?.[roundNumber - 1]
+  const v1Round = job.pipeline_config?.rounds?.[roundNumber - 1]
+  const roundConfig = v2Round ?? v1Round
+  const duration = (roundConfig?.durationMinutes ?? roundConfig?.config?.timeLimit ?? 30) * 60
   const warning = (roundConfig?.warningAtMinutes ?? 5) * 60
 
   return {
     sessionId,
     candidateId,
     jobId: job.id,
-    roundType: roundConfig?.type ?? 'telephonic_screen',
+    roundType: (roundConfig?.type ?? roundConfig?.roundType ?? 'telephonic_screen') as SessionState['roundType'],
     roundNumber,
     startedAt: Date.now(),
     durationSeconds: duration,
@@ -420,18 +438,133 @@ function startTimer(session: ActiveSession) {
   }, 10000)
 }
 
-async function initializeAgents(state: SessionState) {
+function getDefaultTopics(roundType: string): string[] {
+  const defaults: Record<string, string[]> = {
+    system_design: ['scalability', 'databases', 'API design'],
+    live_coding: ['data structures', 'algorithms', 'problem solving'],
+    behavioral: ['leadership', 'conflict resolution', 'ownership'],
+    telephonic_screen: ['fundamentals', 'experience overview'],
+    technical_deep_dive: ['architecture', 'trade-offs', 'debugging'],
+    online_assessment: ['algorithms', 'data structures'],
+  }
+  return defaults[roundType] ?? ['technical skills']
+}
+
+function buildInterviewSystemPrompt(
+  roundType: string,
+  jobTitle: string,
+  seniority: string,
+  cfg: {
+    durationMinutes: number
+    preferredQuestionCount: number
+    preferredTopics: string[]
+    mustCoverTopics: string[]
+    questionDifficulty: string
+    warningAtMinutes: number
+  },
+): string {
+  return [
+    `You are a senior technical interviewer conducting a ${cfg.durationMinutes}-minute`,
+    `${roundType.replace(/_/g, ' ')} interview for a ${seniority} ${jobTitle} position.`,
+    `Topics to cover: ${cfg.preferredTopics.join(', ')}.`,
+    `Must-cover topics: ${cfg.mustCoverTopics.join(', ') || 'none specified'}.`,
+    `Target ${cfg.preferredQuestionCount} questions. Difficulty: ${cfg.questionDifficulty}.`,
+    `Ask one question at a time. Never confirm if answers are correct or incorrect.`,
+    `Be professional, encouraging, and thorough.`,
+    `Warn the candidate when ${cfg.warningAtMinutes} minutes remain.`,
+  ].join(' ')
+}
+
+async function initializeAgents(
+  session: ActiveSession,
+  candidateName?: string,
+  job?: { id?: string; pipeline_v2?: unknown; pipeline_config?: unknown; title?: string; seniority?: string } | null,
+) {
   // Create consumer group for the Redis stream
-  const streamKey = `interview:${state.sessionId}:events`
+  const streamKey = `interview:${session.state.sessionId}:events`
   try {
     await redis.xgroup('CREATE', streamKey, 'agents', '0', 'MKSTREAM')
   } catch {
     // Redis unavailable or group already exists
   }
 
-  // Agents are initialized lazily and subscribe to the stream
-  // ConversationAgent, CodeWatcherAgent, EvaluationAgent, ProctorAgent
-  // Each runs as an async listener on the Redis stream consumer group
+  // Build RoundConfig from pipeline data + fallback defaults
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const v2Round = (job?.pipeline_v2 as any)?.rounds?.[session.state.roundNumber - 1]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const v1Round = (job?.pipeline_config as any)?.rounds?.[session.state.roundNumber - 1]
+  const pipelineRound = v2Round ?? v1Round
+  const roundConfig = {
+    durationMinutes: Math.round(session.state.durationSeconds / 60),
+    warningAtMinutes: Math.round(session.state.warningAtSeconds / 60),
+    preferredQuestionCount: pipelineRound?.preferredQuestionCount ?? 4,
+    preferredTopics: pipelineRound?.preferredTopics ?? getDefaultTopics(session.state.roundType),
+    mustCoverTopics: pipelineRound?.mustCoverTopics ?? [],
+    questionDifficulty: (pipelineRound?.questionDifficulty ?? 'adaptive') as 'easy' | 'medium' | 'hard' | 'adaptive',
+    customSystemPrompt: (pipelineRound?.systemPrompt ?? '') as string,
+    followUpDepth: pipelineRound?.followUpDepth ?? 3,
+    allowClarifyingQuestions: pipelineRound?.allowClarifyingQuestions ?? true,
+  }
+
+  // Build system prompt
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const jobTitle = (job as any)?.title ?? 'Software Engineer'
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const seniority = (job as any)?.seniority_level ?? (job as any)?.seniority ?? 'mid-level'
+  const systemPrompt = roundConfig.customSystemPrompt || buildInterviewSystemPrompt(
+    session.state.roundType, jobTitle, seniority, roundConfig,
+  )
+
+  // Create TTS service
+  const ttsService = new TTSService({
+    elevenLabsApiKey: process.env.ELEVENLABS_API_KEY!,
+    elevenLabsVoiceId: process.env.ELEVENLABS_VOICE_ID!,
+  })
+
+  // Create and start the ConversationAgent
+  const agent = new ConversationAgent({
+    sessionId: session.state.sessionId,
+    ws: session.ws,
+    redis,
+    llmRouter,
+    ttsService,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    sessionState: session.state as any,
+    roundConfig,
+    systemPrompt,
+    candidateName,
+    getDifficulty: () => roundConfig.questionDifficulty,
+    getDifficultyInstruction: () => `Question difficulty: ${roundConfig.questionDifficulty}.`,
+  })
+
+  session.agent = agent
+
+  // Send an immediate ai:question so the Problem Statement panel is never empty.
+  // The agent will update it with LLM-generated content when ready.
+  const firstTopic = roundConfig.preferredTopics[0] ?? 'system design'
+  const immediateQuestion = {
+    type: 'ai:question',
+    payload: {
+      questionText: `Welcome${candidateName ? `, ${candidateName}` : ''}! This is a ${session.state.roundType.replace(/_/g, ' ')} round (${roundConfig.durationMinutes} min). Let's start with ${firstTopic}.`,
+      questionIndex: 1,
+      topic: firstTopic,
+      difficulty: roundConfig.questionDifficulty,
+    },
+    timestamp: Date.now(),
+    sessionId: session.state.sessionId,
+  }
+  if (session.ws.readyState === 1) {
+    session.ws.send(JSON.stringify(immediateQuestion))
+    console.info(`[agents] Sent immediate ai:question for session ${session.state.sessionId}`)
+  } else {
+    console.warn(`[agents] WebSocket not open (readyState=${session.ws.readyState}), cannot send ai:question`)
+  }
+
+  agent.start().catch((err: Error) => {
+    console.error(`[agents] ConversationAgent.start() error for ${session.state.sessionId}:`, err.message, err.stack)
+  })
+
+  console.info(`[agents] Session ${session.state.sessionId} agent started. roundType=${session.state.roundType}, candidateName=${candidateName ?? 'unknown'}`)
 }
 
 async function handleRoundComplete(session: ActiveSession, reason: string) {

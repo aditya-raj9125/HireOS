@@ -14,8 +14,8 @@ import SessionTimer from '../InterviewSession/SessionTimer'
 import dynamic from 'next/dynamic'
 
 const Excalidraw = dynamic(
-  () => import('@excalidraw/excalidraw').then((mod) => mod.Excalidraw),
-  { ssr: false },
+  () => import('./ExcalidrawWrapper').then((mod) => mod.Excalidraw),
+  { ssr: false, loading: () => <div className="w-full h-full bg-white" /> },
 )
 
 interface SystemDesignRoundProps {

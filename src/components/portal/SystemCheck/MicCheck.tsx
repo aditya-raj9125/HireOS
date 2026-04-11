@@ -81,7 +81,7 @@ export default function MicCheck({ onCheckComplete, onNext }: MicCheckProps) {
       // Draw waveform
       const drawWaveform = () => {
         if (!canvasRef.current) return
-        const ctx = canvasRef.current.getContext('2d')
+        const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true })
         if (!ctx) return
         const w = canvasRef.current.width
         const h = canvasRef.current.height

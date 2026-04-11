@@ -105,7 +105,7 @@ export default function CameraCheck({ onCheckComplete, onNext }: CameraCheckProp
 
     let lightStatus: CheckStatus = 'pass'
     if (videoRef.current && canvasRef.current) {
-      const ctx = canvasRef.current.getContext('2d')
+      const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true })
       if (ctx) {
         canvasRef.current.width = 160
         canvasRef.current.height = 120
