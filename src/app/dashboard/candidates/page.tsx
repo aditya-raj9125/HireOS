@@ -62,18 +62,18 @@ export default function CandidatesPage() {
     const { data } = await query
 
     // Fetch job titles for each candidate
-    const jobIds = [...new Set((data ?? []).map((c) => c.job_id))]
+    const jobIds = [...new Set((data ?? []).map((c: Record<string, unknown>) => c.job_id))]
     const { data: jobs } = await supabase
       .from('jobs')
       .select('id, title')
       .in('id', jobIds.length > 0 ? jobIds : [''])
 
-    const jobMap = new Map((jobs ?? []).map((j) => [j.id, j.title]))
+    const jobMap = new Map((jobs ?? []).map((j: Record<string, unknown>) => [j.id, j.title]))
 
     setCandidates(
-      (data ?? []).map((c) => ({
+      (data ?? []).map((c: Record<string, unknown>) => ({
         ...c,
-        job_title: jobMap.get(c.job_id) ?? 'Unknown',
+        job_title: jobMap.get(c.job_id as string) ?? 'Unknown',
       }))
     )
     setLoading(false)

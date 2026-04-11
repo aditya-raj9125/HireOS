@@ -269,7 +269,7 @@ function RoundCard({
           <Badge variant="default">{round.preferredTopics.length} topics</Badge>
         )}
         {round.mustCoverTopics.length > 0 && (
-          <Badge variant="coral">{round.mustCoverTopics.length} must-cover</Badge>
+          <Badge variant="warning">{round.mustCoverTopics.length} must-cover</Badge>
         )}
         <button
           type="button"
@@ -716,9 +716,10 @@ function PassFailTab({
   requiredSkills: string[]
 }) {
   const config = round.config
-  const advanceThreshold = (config as Record<string, unknown>).autoAdvanceThreshold as number ?? 70
-  const rejectThreshold = (config as Record<string, unknown>).autoRejectThreshold as number ?? 30
-  const mustPassSkills = (config as Record<string, unknown>).mustPassSkills as string[] ?? []
+  const configRecord = config as unknown as Record<string, unknown>
+  const advanceThreshold = configRecord.autoAdvanceThreshold as number ?? 70
+  const rejectThreshold = configRecord.autoRejectThreshold as number ?? 30
+  const mustPassSkills = configRecord.mustPassSkills as string[] ?? []
   const hasOverlap = rejectThreshold >= advanceThreshold
 
   const setThreshold = (key: string, value: number) => {

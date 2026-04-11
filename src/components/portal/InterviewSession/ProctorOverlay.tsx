@@ -20,7 +20,7 @@ export default function ProctorOverlay({
   const lastFaceResultRef = useRef<{ faces: number; ts: number }>({ faces: 1, ts: 0 })
   const consecutiveMissingRef = useRef(0)
   const [bannerText, setBannerText] = useState<string | null>(null)
-  const bannerTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const bannerTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   const emit = useCallback(
     (type: ProctorEventType, detail: string, severity: 'low' | 'medium' | 'high') => {

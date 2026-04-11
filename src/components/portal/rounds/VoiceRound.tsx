@@ -26,7 +26,7 @@ const TIPS: Record<string, string[]> = {
   telephonic_screen: [
     'Keep answers concise — aim for 1-2 minutes per response',
     'Use specific examples from your experience',
-    'It's okay to ask the interviewer to clarify a question',
+    'It\'s okay to ask the interviewer to clarify a question',
   ],
   behavioral: [
     'Use the STAR method: Situation, Task, Action, Result',
@@ -58,7 +58,7 @@ export default function VoiceRound({
   const audioCtxRef = useRef<AudioContext | null>(null)
   const seqRef = useRef(0)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const silenceTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   // Audio playback queue
   const playQueueRef = useRef<AudioBuffer[]>([])
@@ -173,7 +173,7 @@ export default function VoiceRound({
   }, [])
 
   // Question progress dots
-  const questionCount = roundConfig.preferredQuestionCount || 6
+  const questionCount = (roundConfig as unknown as Record<string, unknown>).preferredQuestionCount as number || 6
   const currentIdx = currentQuestion?.questionIndex ?? 0
 
   return (

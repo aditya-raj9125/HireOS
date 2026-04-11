@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createBrowserSupabaseClient } from '@/lib/supabase/client'
@@ -10,6 +10,14 @@ import { Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginContent />
+    </Suspense>
+  )
+}
+
+function LoginContent() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -20,7 +28,7 @@ export default function LoginPage() {
   const supabase = createBrowserSupabaseClient()
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data }: { data: { session: unknown } }) => {
       if (data.session) router.replace('/dashboard')
     })
   }, [router, supabase.auth])

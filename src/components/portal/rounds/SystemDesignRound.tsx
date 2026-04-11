@@ -59,10 +59,10 @@ export default function SystemDesignRound({
   const [voiceMode, setVoiceMode] = useState(false)
   const [aiComponents, setAiComponents] = useState<string[]>([])
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>()
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const excalidrawAPIRef = useRef<unknown>(null)
 
-  const totalDuration = roundConfig.durationMinutes || 45
+  const totalDuration = (roundConfig as unknown as Record<string, unknown>).durationMinutes as number || 45
   const elapsed = timerState ? timerState.totalSeconds - timerState.remainingSeconds : 0
   const elapsedMinutes = Math.floor(elapsed / 60)
 
@@ -140,7 +140,7 @@ export default function SystemDesignRound({
       <div className="flex-[7] relative">
         <Excalidraw
           onChange={handleExcalidrawChange}
-          initialData={getInitialData()}
+          initialData={getInitialData() as never}
           UIOptions={{
             canvasActions: {
               changeViewBackgroundColor: true,
@@ -152,7 +152,7 @@ export default function SystemDesignRound({
             },
           }}
           gridModeEnabled
-          ref={(api: unknown) => {
+          excalidrawAPI={(api: unknown) => {
             excalidrawAPIRef.current = api
           }}
         />

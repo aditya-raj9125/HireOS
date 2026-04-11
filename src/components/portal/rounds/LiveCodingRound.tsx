@@ -16,7 +16,10 @@ import { buildCodeUpdate, buildCodeRun } from '@/lib/interviewProtocol'
 import SessionTimer from '../InterviewSession/SessionTimer'
 import dynamic from 'next/dynamic'
 
-const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false })
+const MonacoEditor = dynamic(
+  () => import('@monaco-editor/react').then((mod) => mod.Editor),
+  { ssr: false },
+)
 
 interface LiveCodingRoundProps {
   sessionId: string
@@ -66,8 +69,8 @@ export default function LiveCodingRound({
 
   const editorRef = useRef<unknown>(null)
   const snapshotIndexRef = useRef(0)
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>()
-  const snapshotTimerRef = useRef<ReturnType<typeof setInterval>>()
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const snapshotTimerRef = useRef<ReturnType<typeof setInterval>>(undefined)
 
   // Initialize test cases from problem
   useEffect(() => {

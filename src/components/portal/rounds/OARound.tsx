@@ -15,7 +15,10 @@ import type { OAProblem, RoundConfigV2, TimerUpdatePayload } from '@/types'
 import SessionTimer from '../InterviewSession/SessionTimer'
 import dynamic from 'next/dynamic'
 
-const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false })
+const MonacoEditor = dynamic(
+  () => import('@monaco-editor/react').then((mod) => mod.Editor),
+  { ssr: false },
+)
 
 interface OARoundProps {
   token: string
@@ -439,7 +442,7 @@ export default function OARound({ token, timerState, roundConfig }: OARoundProps
                   height="100%"
                   language={codingSolutions[codingIndex]?.language ?? 'python'}
                   value={codingSolutions[codingIndex]?.code ?? ''}
-                  onChange={(val) => {
+                  onChange={(val: string | undefined) => {
                     setCodingSolutions((prev) =>
                       prev.map((s, i) =>
                         i === codingIndex ? { ...s, code: val ?? '' } : s,

@@ -68,8 +68,17 @@ export default async function CandidateReportPage({ params }: Props) {
         <div className="space-y-6">
           <ComparisonPanel
             overallScore={report.overallScore}
-            percentileRank={report.percentileRank}
-            rounds={report.rounds}
+            percentile={report.percentileRank}
+            cohortAvg={0}
+            skillScores={
+              report.rounds
+                .filter((r: { status: string; round_type?: string; score?: number }) => r.status === 'completed')
+                .map((r: { round_type?: string; score?: number }) => ({
+                  name: r.round_type || 'Round',
+                  candidate: r.score || 0,
+                  cohort: 0,
+                }))
+            }
           />
         </div>
       </div>

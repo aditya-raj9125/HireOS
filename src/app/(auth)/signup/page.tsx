@@ -20,7 +20,7 @@ export default function SignupPage() {
   const supabase = createBrowserSupabaseClient()
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data }: { data: { session: unknown } }) => {
       if (data.session) router.replace('/dashboard')
     })
   }, [router, supabase.auth])

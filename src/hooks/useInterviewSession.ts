@@ -53,8 +53,8 @@ export function useInterviewSession(options: UseInterviewSessionOptions): Interv
   const wsRef = useRef<WebSocket | null>(null)
   const messageQueueRef = useRef<ClientMessage[]>([])
   const reconnectAttemptRef = useRef(0)
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>()
-  const heartbeatTimerRef = useRef<ReturnType<typeof setInterval>>()
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const heartbeatTimerRef = useRef<ReturnType<typeof setInterval>>(undefined)
   const lastServerMessageTimeRef = useRef(Date.now())
   const mountedRef = useRef(true)
 

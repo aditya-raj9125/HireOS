@@ -134,7 +134,7 @@ export default function SystemCheck({ onComplete, token }: SystemCheckProps) {
           <ReadinessConfirm
             results={state.results}
             token={token}
-            onComplete={onComplete}
+            onBegin={onComplete}
           />
         )}
       </div>

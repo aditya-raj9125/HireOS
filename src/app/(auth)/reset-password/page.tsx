@@ -19,7 +19,7 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     // Verify user has a valid recovery session
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data }: { data: { session: unknown } }) => {
       if (!data.session) {
         toast.error('Invalid or expired reset link. Please request a new one.')
         router.replace('/forgot-password')

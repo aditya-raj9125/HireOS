@@ -210,7 +210,7 @@ export function RoundScoreCard({ round }: RoundScoreCardProps) {
               )}
 
               {/* AI Confidence */}
-              {round.anti_ai_signals && (
+              {!!round.anti_ai_signals && (
                 <AIConfidenceNote antiAiSignals={round.anti_ai_signals as { likelihood?: number; indicators?: string[] }} />
               )}
             </div>

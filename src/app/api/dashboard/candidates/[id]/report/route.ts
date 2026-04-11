@@ -98,7 +98,7 @@ export async function GET(
   // Assemble round reports with associated recordings
   const roundReports = roundResults.map((round: Record<string, unknown>) => {
     const roundRecordings = recordingsWithUrls.filter(
-      (rec: { session_id: unknown }) => rec.session_id === round.session_id,
+      (rec) => (rec as Record<string, unknown>).session_id === (round as Record<string, unknown>).session_id,
     )
 
     return {
